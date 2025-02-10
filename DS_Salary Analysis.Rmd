@@ -1,0 +1,530 @@
+---
+title: "Data Science Salaries 2024 Analysis Project "
+author: "Oscar Zheng"
+date: "2024-12-09`"
+output:
+  html_document:
+    toc: yes
+    toc_float: yes
+    code_folding: show
+    self_contained: yes
+  pdf_document:
+    toc: yes
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+```
+
+
+```{r}
+library(tidyverse)
+library(ggcorrplot)
+library(dendextend)
+library(factoextra)
+library(gridExtra)
+library(GGally)
+library(forcats)
+library(rnaturalearth)
+library(rnaturalearthdata)
+
+data <- read.csv("DataScience_salaries_2024.csv")
+
+data <- data %>%
+  mutate(
+    salary = as.numeric(salary),
+    salary_in_usd = as.numeric(salary_in_usd),
+    remote_ratio = as.numeric(remote_ratio),
+    experience_level = as.factor(experience_level),
+    employment_type = as.factor(employment_type),
+    company_size = as.factor(company_size),
+    job_title = tolower(str_trim(job_title)),
+    company_location = tolower(str_trim(company_location)),
+    salary_in_usd = salary_in_usd / 1000,
+    company_size = factor(company_size, levels = c("S", "M", "L")),  
+    experience_level = factor(experience_level, levels = c("EN", "MI", "SE", "EX")),
+    job_title = case_when(
+    str_detect(job_title, regex("Research", ignore_case = TRUE)) ~ "Research Scientist",
+    str_detect(job_title, regex("Data Scientist|Scientist", ignore_case = TRUE)) ~ "Data Scientist",
+    str_detect(job_title, regex("Data Engineer", ignore_case = TRUE)) & 
+      !str_detect(job_title, regex("Machine Learning", ignore_case = TRUE)) ~ "Data Engineer",
+    str_detect(job_title, regex("Analyst", ignore_case = TRUE)) ~ "Data Analyst",
+    str_detect(job_title, regex("Machine Learning|ML Engineer", ignore_case = TRUE)) ~ "Machine Learning Engineer",
+    TRUE ~ "Other")
+  )
+```
+
+## Introduction
+
+The field of data science continues to expand rapidly, creating a dynamic job market with a wide range of roles and salary opportunities. For data science students preparing to enter this competitive field, understanding salary trends and key factors influencing compensation is invaluable. This project examines the "Data Science Salaries 2024" dataset to provide insights into industry dynamics and inform future job seekers.
+
+## Motivation
+
+As data science majors or majors in related fields, we are uniquely positioned to analyze and interpret data that directly relates to our career paths. This project is motivated by a desire to better understand the job market we are preparing to enter. By uncovering patterns and trends in data science salaries, we aim to provide actionable insights for fellow students and aspiring data scientists. Our findings can help job seekers make informed decisions and set realistic career expectations.
+
+## Project Overview
+
+Our data was collected from a publicly available dataset on [Kaggle](https://www.kaggle.com/datasets/yusufdelikkaya/datascience-salaries-2024). This dataset compiles information on data science job postings across the globe, covering the years 2020 to 2024. It contains 14838 records and includes variables such as job titles, salaries, company sizes, and experience levels. Salaries are presented in both local currencies and USD, standardized for exchange rates, making cross-country comparisons possible.
+
+The dataset provides valuable insights into the data science job market and its evolving trends over recent years. It includes a mix of categorical and quantitative variables, as described below.
+
+| Column Name         | Description |
+|:------------------- |:----------- |
+| *work_year*         | The year in which the salary data was collected. |
+| *experience_level*  | The employee's experience level (e.g., Junior, Mid-level, Senior, Expert). |
+| *employment_type*   | The type of employment (e.g., Full-Time, Part-Time, Contract, Free Lance). |
+| *job_title*         | The title or role of the employee in the data science field. |
+| *salary*            | The employee's salary in the currency specified by *salary_currency*. |
+| *salary_currency*   | The currency in which the salary is denoted. |
+| *salary_in_usd*     | The employee's salary converted to USD for standardization. |
+| *employee_residence*| The location of the employee's residence. |
+| *remote_ratio*      | The percentage of remote work allowed for the position (e.g., 0, 50, 100). |
+| *company_location*  | The location of the company where the employee works. |
+| *company_size*      | The size of the company based on employee count (e.g., Small, Medium, Large). |
+
+### Research Questions
+
+This project is driven by three main research questions:
+
+1. **What are the average salary differences across various job titles in the data science field?**
+
+2. **How do salaries vary by geographic location and experience level?**
+
+3. **What trends are observable in data science salaries over recent years?**
+
+
+### Salary Distribution with Density Curve
+
+One of our primary goals in this project is to understand "What are the average salary differences across various job titles in the data science field?" To start addressing this question, we analyzed the distribution of salaries for data science roles. The visualization below combines a histogram and a density curve, providing both a granular view of salary ranges and a smooth approximation of the overall distribution. This allows us to identify key salary trends and anomalies within the data.
+
+
+```{r}
+ggplot(data, aes(x = salary_in_usd)) +
+  geom_histogram(aes(y = ..density..), binwidth = 20, fill = "skyblue", color = "black", alpha = 0.6) + 
+  geom_density(color = "darkblue", size = 1, fill = "red", alpha = 0.2) + 
+  labs(
+    title = "Salary Distribution with Density Curve",
+    x = "Salary (in Thousands of USD)",
+    y = "Density"
+  ) +
+  theme_minimal()
+
+summary(data$salary_in_usd)
+```
+The graph demonstrates that the salaries in data science roles exhibit a **right-skewed distribution**, where most salaries fall within a lower range, but there are a few significantly high outliers. From the summary statistics:
+
+- **Mean salary**: $149.9k 
+
+- **Median salary**: $141.3k 
+
+- **Minimum salary**: $15k, and **maximum salary**: \$800k, suggesting a wide range in compensation levels.
+
+- **First quartile (Q1)**: $102k and **third quartile (Q3)**: \$185.9k indicate that the middle 50% of salaries lie between these values.
+
+The density curve smooths the histogram to reveal the peak of the distribution around $140k~\$150k. The long tail on the right highlights the presence of high-paying roles, although these are relatively rare. This suggests that while a majority of data science roles fall within a more typical salary range, there are opportunities for significantly higher compensation, possibly tied to specific roles, experience levels, or locations.
+
+
+### Time Series Graph: Average Salary Trends Over Time
+
+The following graph illustrates the average salary trends over time for data science roles from 2020 to 2024. This time-series visualization highlights how salaries have changed on average over the years, offering insights into industry growth and compensation trends.
+
+\vspace{10pt}
+
+```{r}
+ggplot(data, aes(x = work_year, y = salary_in_usd, group = 1)) +
+  geom_line(stat = "summary", fun = mean, color = "blue", size = 1.2) +
+  geom_point(stat = "summary", fun = mean, color = "blue", size = 3) +
+  labs(
+    title = "Average Salary Trends Over Time",
+    x = "Year",
+    y = "Average Salary (USD in Thousands)"
+  ) +
+  theme_minimal()
+```
+
+The graph shows a steady increase in average salaries for data science roles over the observed years, with a significant upward trend starting in 2021. Key observations include:
+
+- **2020 to 2021**: A slight decline in average salary, likely reflecting economic disruptions or stagnation due to the global pandemic.
+
+- **2021 to 2022**: A sharp increase in average salary, climbing from approximately $100k to \$140k. This suggests a rebound in the industry, possibly driven by heightened demand for data professionals as businesses adapted to digital transformation during the pandemic and also the growing boom in AI and machine learning demands.
+
+- **2022 to 2023**: Salaries continued to grow, peaking at around $150k.
+
+- **2023 to 2024**: A slight dip in salaries, though still maintaining a much higher level compared to pre-2021.
+
+This trend indicates a long-term positive growth in compensation for data science professionals, reflecting increasing demand for these roles. However, the slight decline in 2024 could likely be an early indicator of market stabilization. Overall, this underscores the growing value placed on data science field while also raising questions about factors influencing these shifts, such as experience levels, job categories, or economic conditions.
+
+## Mean Data Science Salaries by Country
+
+Next, we want to see how geographic location affects salary. This choropleth map visualizes the mean salaries of data science professionals across different countries, measured in thousands of USD. The darker shades of blue represent higher mean salaries, while lighter shades indicate lower salaries. Countries without salary data are shown in gray.
+\vspace{10pt}
+
+```{r}
+choropleth_data <- data %>%
+  group_by(employee_residence) %>%
+  summarize(mean_salary = mean(salary_in_usd, na.rm = TRUE)) %>%
+  rename(iso_a2 = employee_residence)  
+
+world <- ne_countries(scale = "medium", returnclass = "sf")
+
+world_data <- left_join(world, choropleth_data, by = "iso_a2")
+
+ggplot(world_data) +
+  geom_sf(aes(fill = mean_salary), color = "white", size = 0.2) +
+  scale_fill_gradient2(
+    low = "white",  
+    mid = "lightblue",     
+    high = "darkblue",  
+    midpoint = median(choropleth_data$mean_salary, na.rm = TRUE), 
+    na.value = "grey50",
+    name = "Mean Salary"
+  ) +
+  labs(
+    title = "Mean Data Science Salaries by Country in Thousands of USD",
+  ) +
+  theme_minimal()
+```
+
+**Key observations:**
+
+1. **North America and Western Europe**: The United States, Canada, and some countries in Western Europe are shaded in darker blue, indicating higher mean salaries. These regions are hubs for technology and data-driven industries, which often offer competitive compensation.
+
+2. **Asia-Pacific**: Countries like Australia exhibit relatively high salaries, while other regions, such as Southeast Asia, show slightly lower mean salaries. This reflects regional economic differences and demand for data professionals.
+
+3. **Africa and South America**: These regions predominantly display lighter shades, indicating lower average salaries for data science roles. This is consistent with global economic disparities and the concentration of tech industries in other parts of the world.
+
+4. **Global Disparities**: The map highlights a significant gap between higher-paying regions like North America, Western Europe and lower-paying regions like parts of Africa and South America.
+
+It is important to consider that these salaries have been converted into USD, reflecting American purchasing power standards. In countries with lower mean salaries on this map, such as parts of Africa, Southeast Asia, and South America, the cost of living is often significantly lower than in the United States or Western Europe. As such, while these salaries may seem low by American standards, they could still represent a comfortable or even high standard of living within the local economic context. This underscores the importance of analyzing these figures with respect to local purchasing power and cost of living.
+
+### Box Plot: Data Science Salaries by Company Size and Experience Level
+
+The following graph compares data science salaries across different experience levels and company sizes (small, medium, and large). Box plots are used to display the distribution of salaries for each combination, highlighting trends, variability, and potential outliers. This visualization provides insights into how company size impacts compensation for data science professionals at various career stages, which shows us trends in the data science industry.
+
+\vspace{10pt}
+```{r}
+ggplot(data, aes(x = experience_level, y = salary_in_usd, fill = company_size)) +
+  geom_boxplot(outlier.alpha = 0.5) +
+  scale_x_discrete(
+    labels = c(
+      "EN" = "Entry",
+      "MI" = "Mid-Level",
+      "SE" = "Senior",
+      "EX" = "Executive"
+    )
+  ) +
+  labs(
+    title = "Data Science Salaries by Company Size and Experience Level",
+    x = "Experience Level",
+    y = "Salary (in Thousands USD)",
+    fill = "Company Size"
+  )
+```
+
+
+The graph reveals several key trends:
+1. **Mid-Sized Companies Offer Competitive Salaries**:
+
+   - Across most experience levels, salaries at medium-sized companies are comparable to, if not higher than, those at large companies. This aligns with industry norms, where medium-sized companies often provide higher base compensation to attract top talent, while larger companies may compensate with better long-term benefits, such as stock options, bonuses, and perks.
+
+2. **Experience Level Impacts Salaries Significantly**:
+
+   - **Entry-Level**: Salaries are generally lower across all company sizes, with medium and large companies offering higher compensation than small companies.
+   
+   - **Mid-Level and Senior Roles**: The gap between small, medium, and large companies becomes more pronounced. Medium-sized companies maintain competitive salaries, sometimes exceeding large companies.
+   
+   - **Executive-Level**: Large companies tend to have generally higher compensation, but medium-sized companies also offer substantial salaries that are very comparable to large companies, with smaller companies falling behind.
+
+3. **Variability and Outliers**:
+
+   - Large companies exhibit more variability in salaries, especially at higher experience levels, which may reflect broader pay scales, including bonuses and regional differences.
+   
+   - Medium-sized companies show a relatively consistent distribution, indicating a tighter compensation structure.
+   
+   - Smaller companies show the tightest compensation variability
+
+This graph highlights an interesting dynamic in the industry: medium-sized companies, despite their smaller scale, often provide compelling compensation to compete with larger organizations. These trends are valuable for professionals evaluating job offers and understanding the trade-offs between base salary and other benefits at different company sizes.
+
+### How the categories are sorted and filtered
+
+The dataset categorizes job titles into six main groups based on keyword matching:
+
+Research Scientist: Includes roles focused on academic or applied research in data science.
+
+Data Scientist: Covers a broad range of roles involving statistical modeling, data analysis, and machine learning.
+
+Data Engineer: Encompasses positions responsible for designing, building, and maintaining data infrastructure (excluding machine learning engineers).
+
+Data Analyst: Includes roles specializing in interpreting data and generating actionable insights through reports and dashboards.
+
+Machine Learning Engineer: Focuses on designing and deploying machine learning models and AI systems.
+
+Other: A diverse category including roles like data infrastructure architects, data owners, BI engineers, and other specialized positions that do not fall into the primary categories.
+
+### Analysis of Job Categories by Experience Level Mosaic Plot
+
+This mosaic plot provides an overview of how different job categories are distributed across experience levels, with color shading used to represent standardized residuals. Each category's box size reflects the proportion of employees within that category, offering insights into the prevalence of various roles and their representation at different stages of career progression. This plot sets the stage for the deeper analyses that follow by showcasing how roles like Research Scientist and Machine Learning Engineer compare to Data Analysts or Data Engineers in their career distributions. Understanding these distributions provides context for later insights into salary, location, and career trends within the data science field.
+
+\vspace{10pt}
+
+```{r}
+job_table <- table(data$job_title, data$experience_level)
+mosaicplot(
+  job_table,
+  main = "Job Categories by Experience Level",
+  shade = TRUE,
+  xlab = "Job Category",
+  ylab = "Experience Level"
+)
+```
+
+**Key Observations:**
+
+1. **Data Analysts and Entry-Level Positions**:
+
+   Entry-level positions are overrepresented in the Data Analyst category, as indicated by the strong blue shading. This suggests that a significant number of individuals start their data science careers in this role.
+
+2. **Data Engineers**:
+
+   The white region for the mid-level (MI) and senior-level (SE) experience categories suggests that these levels are represented as expected in this role. There are no significant deviations, indicating that the proportion of Data Engineers in these roles aligns with the overall distribution.
+
+
+3. **Data Scientists and Machine Learning Engineers**:
+
+   Senior positions are heavily associated with the Data Scientist and ML Engineers category, as seen by the red shading for this group. This aligns with industry trends where Data Scientist roles often demand significant expertise and experience.
+
+4. **Research Scientists**:
+
+   Research Scientists are surprisingly associated with entry level, as shown by the blue shading in this category. Many Research Scientist positions require advanced degrees such as master's or Ph.D.s, which means individuals often enter the job market directly into specialized roles at an entry level position. The white regions across several experience levels, particularly for mid-level and senior roles, show that Research Scientists also have a representation consistent with what would be expected. This suggests no overrepresentation or underrepresentation in these categories.
+
+5. **Other Categories and Mid-Level Roles**:
+
+   The "Other" category appears prominently among mid-level roles, as evidenced by the significant box size in this segment. This could reflect a diversity of job titles that fall outside traditional data science classifications.
+
+This mosaic plot provides a clear visual of how job categories and experience levels intersect in the data science field. The results highlight trends such as the prevalence of entry-level Data Analyst roles and the seniority often required for Machine Learning Engineer and Data Scientist positions. These insights can inform workforce planning and career progression strategies within the industry.
+
+### Heatmap of Salary by Job Title and Remote Ratio
+
+To see trends with remote ratio in this industry we see that the following heatmap visualizes mean salaries (in thousands of USD) for different job titles based on their remote work ratio. This chart highlights variations in pay for data professionals working in-person, remotely, or in a hybrid setting, offering insights into how remote work impacts compensation across roles in this industry.
+\vspace{10pt}
+
+```{r, warning = FALSE, message = FALSE}
+heatmap_data <- data %>%
+  group_by(job_title, remote_ratio) %>%
+  summarize(mean_salary = mean(salary_in_usd, na.rm = TRUE)) %>%
+  ungroup()
+
+ggplot(heatmap_data, aes(x = factor(remote_ratio), y = reorder(job_title, mean_salary), fill = mean_salary)) +
+  geom_tile() +
+  scale_fill_gradient(low = "white", high = "blue") +
+  labs(
+    title = "Heatmap of Salary by Job Title and Remote Ratio",
+    x = "Remote Ratio (%)",
+    y = "Job Title",
+    fill = "Mean Salary (in Thousands of USD)"
+  ) +
+  theme_minimal()
+```
+The heatmap reveals several key trends:
+
+1. **Higher Pay for In-Person ML Engineers and Research Scientists**:
+
+   - Machine Learning Engineers and Research Scientists tend to earn higher salaries when working in-person compared to remote or hybrid setups. This suggests that certain highly specialized roles may still benefit from on-site collaboration and direct access to resources or teams.
+
+2. **Roughly Equal Pay for Remote and In-Person Roles**:
+
+   - For most job titles, including Data Scientists, Data Engineers, and Data Analysts, salaries are generally comparable between in-person and remote workers, indicating that remote work has achieved parity with traditional office settings in these roles.
+
+3. **50/50 Hybrid Work Stands Out**:
+
+   - Salaries for hybrid roles are noticeably lower across most job titles. This could reflect a market discrepancy where hybrid work arrangements are less optimized or desirable compared to fully remote or fully in-person roles.
+
+Overall, this heatmap illustrates that while remote work is generally well-compensated across job titles, certain high-skill professions like Machine Learning Engineering and Research Science still value in-person contributions more highly. The lower salaries for hybrid arrangements may point to a lack of market standardization or alignment in this working model.
+
+### Average Salary by Job Title and Experience Level
+
+To gain deeper insights into how compensation varies by both role and experience, we created a heatmap that illustrates the average salary (in thousands of USD) for different job titles across various experience levels: Entry (EN), Mid-Level (MI), Senior (SE), and Executive (EX). This visualization allows for a side-by-side comparison of how salaries progress within each role, revealing important trends in compensation dynamics. The heatmap highlights the interplay between job titles and career progression, showcasing how both factors contribute to salary outcomes. By providing a clear and accessible view of which roles command the highest pay at each experience level, it offers valuable insights for professionals seeking to understand their earning potential within the data science field.
+\vspace{10pt}
+
+```{r, warning = FALSE, message = FALSE}
+heatmap_data <- data %>%
+  group_by(job_title, experience_level) %>%
+  summarize(mean_salary = mean(salary_in_usd, na.rm = TRUE)) %>%
+  ungroup()
+
+heatmap_data <- heatmap_data %>%
+  mutate(job_title = fct_reorder(job_title, mean_salary, .desc = FALSE))
+
+ggplot(heatmap_data, aes(x = experience_level, y = job_title, fill = mean_salary)) +
+  geom_tile() +
+  scale_fill_gradient(low = "white", high = "blue") +
+  labs(
+    title = "Average Salary by Job Title and Experience Level",
+    subtitle = "Experience Levels: EN = Entry, MI = Mid-Level, SE = Senior, EX = Executive",
+    x = "Experience Level",
+    y = "Job Title (Ordered by Mean Salary)",
+    fill = "Mean Salary (in Thousands of USD)"
+  ) +
+  theme_minimal()
+```
+
+This heatmap reveals several important trends:
+
+1. **Machine Learning Engineers Earn the Highest Salaries**:
+
+   - Across all experience levels, Machine Learning Engineers consistently earn the highest salaries, with Executive-level ML Engineers reaching the highest average salary of approximately $240k.
+   
+   - This aligns with industry trends, where ML expertise is highly sought after due to its critical role in AI development and automation.
+
+2. **Significant Salary Growth with Experience**:
+
+   - For most roles, there is a clear progression in salaries from Entry-Level to Executive-Level. This demonstrates that experience plays a critical role in determining compensation.
+   
+   - Notably, the jump between Senior and Executive levels is particularly pronounced for ML Engineers, highlighting the premium placed on leadership roles in technical fields.
+
+3. **Research Scientists and Data Scientists**:
+
+   - Research Scientists and Data Scientists follow a similar trend, with Research Scientists earning slightly higher salaries on average. This reflects the specialized nature of research positions, which often require advanced degrees and niche expertise. Surprisingly, the average salary between Senior and Executive level roles for Research Scientists actually dips a little.
+   
+   - Data Scientists exhibit consistent salary growth with experience, reinforcing their foundational role in data-driven decision-making.
+
+4. **Lower Salaries for Data Analysts and Data Engineers**:
+
+   - Data Analysts consistently earn the lowest salaries across all experience levels, reflecting their role as an entry point into the data profession. However, salary growth is still evident as experience increases.
+   
+   - Data Engineers, while earning more than Data Analysts, do not see the same sharp salary increases at higher experience levels compared to roles like ML Engineers and Research Scientists.
+
+**Key Takeaways:**
+
+- Specialized roles like ML Engineers and Research Scientists command premium salaries, especially at the senior and executive level, due to their advanced skill requirements and contributions to cutting-edge fields.
+
+- Experience significantly impacts salary growth, with senior and executive roles showing substantial pay increases compared to entry and mid-level positions.
+
+- Data Analysts and Engineers earn less on average, though they still see upward trends with experience.
+
+This analysis highlights the importance of skill specialization and career progression in maximizing earning potential in the data science field, but also switching roles could have potential benefits of pay increase if one is currently a data analyst.
+
+
+### Analysis of the Violin Plot, Linear Regression, and Job Title Slopes
+
+To further explore how salaries are influenced by experience, we analyzed the distribution of salaries across experience levels and job titles using a violin plot. The violin plot provides a visual representation of salary distributions by experience level across different job titles. It highlights not only the median salary for each group but also the distribution's spread and density. The plot reveals that as experience level increases, salaries tend to rise across all job titles. However, the rate of salary growth as represented by the slopes varies among job titles, emphasizing that the relationship between experience and salary is not uniform.
+\vspace{10pt}
+
+```{r, warning = FALSE, message = FALSE}
+ggplot(data, aes(x = as.numeric(experience_level), y = salary_in_usd, color = experience_level)) +
+  geom_violin(trim = TRUE, scale = "width") +  # Points colored by experience level
+  geom_boxplot(width = 0.2, position = position_dodge(width = 0), outlier.shape = NA) +  # Box plots inside violins
+  geom_smooth(method = "lm", se = FALSE, color = "black", linetype = "dashed") +  # Adds LM line
+  facet_wrap(~ job_title, scales = "free_y") +  # Create a plot for each job title
+  scale_x_discrete(
+    labels = c("EN" = "Entry", "MI" = "Mid-Level", "SE" = "Senior", "EX" = "Executive")
+  ) +
+  labs(
+    title = "Salary by Experience Level in Each Job title",
+    x = "Experience Level",
+    y = "Salary (in Thousands of USD)",
+    color = "Experience Level"
+  ) +
+  theme_minimal() +
+  theme(strip.text = element_text(size = 12))
+
+```
+
+```{r}
+regression_model <- lm(salary_in_usd ~ experience_level, data = data)
+summary(regression_model)
+```
+
+From the linear regression summary, we see that experience level is statistically significant in predicting salary, with p-values far below the 0.05 threshold for all levels. The coefficient estimates indicate the approximate salary increase associated with moving from one experience level to another with entry level being the base line: (Note: This is not additive. Each increase below is the salary increase from Entry level)
+
+- **Mid-Level (MI):** +33.73k USD
+
+- **Senior (SE):** +72.04k USD
+
+- **Executive (EX):** +103.07k USD
+
+These values demonstrate that salary growth is farily consistent as professionals move into more senior roles, with each jump being roughly $30k~\$40k more than the previous level.
+
+```{r}
+lm_slopes <- data %>%
+  group_by(job_title) %>%
+  summarize(
+    slope = coef(lm(salary_in_usd ~ as.numeric(experience_level)))[2]
+  )
+
+print(lm_slopes)
+```
+
+The calculated slopes for each job title further detail the variation in salary growth:
+
+- **Machine Learning Engineers** experience the highest salary growth (+44.05k USD per level), reflecting the premium placed on experience in this high-demand field.
+
+- **Data Scientists** and **Data Engineers** exhibit similar growth rates (+37.96k USD and +35.16k USD per level, respectively), underscoring their importance in data-driven roles.
+
+- **Data Analysts**, on the other hand, show the lowest growth (+18.48k USD per level), consistent with their lower baseline salaries and the less technical nature of their work.
+
+- **Research Scientists** (+32.29k USD per level) and "Other" roles (+37.15k USD per level) reflect moderate growth, balancing technical expertise with research or specialized responsibilities.
+
+Overall, these findings confirm that while experience universally contributes to higher salaries, the magnitude of its impact varies significantly by job title, with specialized and technical roles seeing the greatest benefits.
+
+
+### PCA Analysis: Scree Plot and Biplot
+
+#### Scree Plot
+```{r}
+pca_data <- data %>%
+  group_by(job_title) %>%
+  summarize(
+    mean_salary = mean(salary_in_usd, na.rm = TRUE),
+    mean_remote_ratio = mean(remote_ratio, na.rm = TRUE)
+  ) %>%
+  column_to_rownames("job_title")
+
+pca_result <- prcomp(pca_data, scale. = TRUE)
+
+fviz_eig(pca_result, 
+         addlabels = TRUE,  
+         ylim = c(0, 100),  
+         barfill = "skyblue", 
+         barcolor = "black", 
+         title = "Scree Plot: Variance Explained by Principal Components") +
+  theme_minimal()
+```
+
+The scree plot shows the proportion of variance explained by each principal component . The first principal component (PC1) explains **84.6%** of the total variance, while the second component (PC2) accounts for **15.4%**. Together, these two components explain all the variance in the dataset, suggesting that two dimensions are sufficient for capturing the underlying patterns. The sharp decline in variance after PC1 highlights that most of the structure is captured by this component, with PC2 providing additional but less significant information.
+
+#### PCA Biplot
+To better understand how job categories are influenced by compensation and work arrangements, we used a PCA biplot to examine the relationships between job categories, mean salaries, and remote work ratios. The biplot provides a simplified representation of these variables, reducing the complexity of the dataset while retaining the most significant patterns.The arrows in the biplot represent the contribution of each variable to the principal components, with their direction and length indicating the strength and influence of those variables. 
+\vspace{10pt}
+
+```{r}
+fviz_pca_biplot(pca_result,
+                repel = TRUE,
+                title = "PCA Biplot of Job Categories") +
+  theme_minimal()
+```
+
+**Key findings include:**
+
+1. Research Scientists are located in the top-right quadrant, far from both arrows, indicating that their trends in salary and remote work are weakly explained by the principal components. This separation may reflect other unique factors influencing their roles.
+
+2. Machine Learning Engineers are positioned closer to the arrow representing higher salaries, indicating a stronger association with higher compensation. While slightly futher from the remote ratio arrow, their alignment suggests that remote work may be less of a defining factor for this role compared to salary.
+
+3. Data Analysts are distinctly placed in the upper-left quadrant, also far from both arrows, indicating that their trends in salary and remote work are weakly explained by the principal components. This separation may reflect other unique factors influencing their roles.
+
+4. Roles like Data Scientists, Data Engineers, and Others are positioned near the origin, indicating moderate associations with both salary and remote work, but a little more to association to remote work. These roles exhibit a balance of characteristics compared to more distinctly positioned roles.
+
+Overall, the biplot highlights the complexity of interpreting job categories in terms of salary and remote work preferences, with Research Scientists and Data Analysts standing out as roles influenced by factors beyond those captured by the first two principal components.
+
+
+### Conclusion
+
+Our analysis provides a comprehensive analysis of data science salaries using the "Data Science Salaries 2024" dataset, guided by three key research questions. First, the report examined salary differences across various job titles in the data science field. Machine Learning Engineers and Research Scientists consistently emerged as the highest-paid roles, with their compensation reflecting the specialized and advanced skill sets these positions require. In contrast, Data Analysts were identified as having the lowest average salaries, marking their position as an entry point into the field.
+
+Second, the analysis investigated how salaries vary by geographic location and experience level. Salaries were observed to be highest in North America, Western Europe, and Australia, consistent with these regions being hubs for tech industries and offering competitive compensation. In contrast, regions like Africa and South America displayed lower average salaries. However, the report acknowledges that these salaries, converted to USD, might still represent a livable or even high wage relative to the local cost of living. Experience level emerged as a significant determinant of salary growth, with sharp increases observed from entry-level to executive-level roles, particularly for technical positions like Machine Learning Engineers.
+
+Finally, observable trends in data science salaries over recent years indicate steady growth, reflecting the increasing demand for data science professionals across industries. The rise in salaries aligns with the broader technological advancements and the critical role data-driven decision-making plays in business success. Despite this upward trend, some job categories exhibit a more nuanced relationship with salary growth, such as those more aligned with remote or hybrid work environments.
+
+**Limitations of the Report:**
+
+Despite the insights provided, the report has limitations. The dataset primarily reflects salary data from publicly available sources, which may introduce biases toward higher-paying roles or regions with more transparent reporting practices. Additionally, while the data is adjusted for exchange rates, it does not account for purchasing power parity, which limits the contextual interpretation of salaries across different countries. Another limitation is the lack of granularity in role definitions and skill requirements, which could mask nuances within broader job categories. Finally, the analysis is constrained to historical data and may not fully capture emerging trends or roles in the rapidly evolving data science industry. Future work could address these gaps by incorporating more diverse datasets, refining role definitions, and integrating projections for industry growth.
